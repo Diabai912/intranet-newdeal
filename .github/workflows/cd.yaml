@@ -1,0 +1,47 @@
+name: CD Pipeline - Prod
+
+on:
+  push:
+    branches: [prod]
+
+env:
+  IMAGE_NAME: intranet-newdeal
+  IMAGE_TAG: 1.0.1
+  DOCKER_REGISTRY: ${{ secrets.DOCKERHUB_USERNAME }}
+
+jobs:
+
+  security-scan:
+    name: Job 1 - Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Scan vulnerabilities with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          format: table
+          #exit-code: '1'
+
+  deploy:
+    name: Job 2 - Deploy on runner_prod
+    runs-on: runner_prod
+    needs: security-scan
+    steps:
+      - name: Pull latest image
+        run: docker pull ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+
+      - name: Stop existing container
+        run: docker stop intranet-app || true
+
+      - name: Remove old container
+        run: docker rm intranet-app || true
+
+      - name: Run new container on port 80
+        run: |
+          docker run -d \
+            -p 80:80 \
+            --name intranet-app \
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
